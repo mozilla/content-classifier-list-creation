@@ -1,0 +1,19 @@
+[project]
+dynamic = ["version", "dependencies", "readme"]
+name = "content-classifier-list-creation"
+description = "This is a script to deploy lists for the Content Classifier."
+license = {file = "LICENSE"}
+maintainers = [
+  {name = "Tim Huang", email = "tihuang@mozilla.com"}
+]
+
+[build-system]
+requires = ["setuptools >= 59.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+cc-list-creation = "content_classifier_list_creation.__main__:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.in"] }
+readme = {file = ["README.md"]}

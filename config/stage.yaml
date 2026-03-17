@@ -1,0 +1,25 @@
+remote_settings:
+  server_url: "https://remote-settings.allizom.org/v1"
+  bucket: "main-workspace"
+  collection: "content-classifier-lists"
+
+lists:
+  - name: "easylist"
+    type: abp
+    url: "https://easylist.to/easylist/easylist.txt"
+  - name: "easyprivacy"
+    type: abp
+    url: "https://easylist.to/easylist/easyprivacy.txt"
+  - name: "disconnect-tracking-protection"
+    type: disconnect
+    sources:
+      - key: "blocklist"
+        url: "https://raw.githubusercontent.com/mozilla-services/shavar-prod-lists/refs/heads/master/disconnect-blacklist.json"
+      - key: "entitylist"
+        url: "https://raw.githubusercontent.com/mozilla-services/shavar-prod-lists/refs/heads/master/disconnect-entitylist.json"
+    transform: "disconnect_to_abp"
+    transform_options:
+      categories:
+        - Advertising
+        - Analytics
+        - Social

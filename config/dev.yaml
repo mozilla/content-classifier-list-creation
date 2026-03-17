@@ -1,0 +1,15 @@
+remote_settings:
+  server_url: "https://remote-settings-dev.allizom.org/v1"
+  bucket: "main-workspace"
+  collection: "content-classifier-lists"
+  auto_approve: true
+
+lists:
+  - name: "easylist"
+    type: abp_records
+    url: "https://easylist.to/easylist/easylist.txt"
+    collection: "content-classifier-list-easylist"
+  # - name: "easyprivacy"
+  #   type: abp_records
+  #   url: "https://easylist.to/easylist/easyprivacy.txt"
+  #   max_rules: 1
