@@ -69,5 +69,11 @@ def load_config(path):
                         f"List entry {i} ('{name}'), source {j}: must have 'key' and 'url'"
                     )
             get_transform(entry["transform"])
+            max_rules = entry.get("max_rules")
+            if max_rules is not None:
+                if not isinstance(max_rules, int) or max_rules <= 0:
+                    raise ValueError(
+                        f"List entry {i} ('{name}'): 'max_rules' must be a positive integer"
+                    )
 
     return config

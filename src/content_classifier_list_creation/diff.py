@@ -22,10 +22,8 @@ def diff_rules(new_rules, existing_records, list_name):
         rid = rule_id(list_name, rule)
         new_ids[rid] = rule
 
-    # Collect IDs of existing records belonging to this list
-    existing_ids = {
-        r["id"] for r in existing_records if r.get("Name") == list_name
-    }
+    # Collect IDs of existing records in the collection
+    existing_ids = {r["id"] for r in existing_records}
 
     ids_to_create = set(new_ids.keys()) - existing_ids
     ids_to_delete = existing_ids - set(new_ids.keys())

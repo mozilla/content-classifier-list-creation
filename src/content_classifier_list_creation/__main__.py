@@ -165,6 +165,54 @@ def main():
                         print(f"  ERROR: {e}", file=sys.stderr)
                         failures.append((name, str(e)))
 
+                elif list_type == "disconnect_records":
+                    print(f"\nProcessing: {name} -> {col} (per-rule records from transform)")
+
+                    if args.dry_run:
+                        for src in entry["sources"]:
+                            print(f"  [dry-run] Would download: {src['url']}")
+                        print(f"  [dry-run] Would run transform: {entry['transform']}")
+                        print(f"  [dry-run] Would parse rules and diff against existing records")
+                        print(f"  [dry-run] Would create/delete records as needed for '{name}'")
+                        successes.append(name)
+                        continue
+
+                    try:
+                        source_paths = {}
+                        for src in entry["sources"]:
+                            path = download_file(src["url"], tmp_dir)
+                            source_paths[src["key"]] = path
+                        transform_fn = get_transform(entry["transform"])
+                        options = entry.get("transform_options", {})
+                        filepath = transform_fn(source_paths, tmp_dir, options)
+
+                        new_rules = parse_rules(filepath)
+                        max_rules = entry.get("max_rules")
+                        if max_rules and len(new_rules) > max_rules:
+                            print(f"  Parsed {len(new_rules)} rules, limiting to {max_rules}")
+                            new_rules = new_rules[:max_rules]
+                        else:
+                            print(f"  Parsed {len(new_rules)} rules from {name}")
+
+                        to_create, to_delete = diff_rules(
+                            new_rules, col_records, name
+                        )
+                        print(
+                            f"  Diff: {len(to_create)} to create, {len(to_delete)} to delete"
+                        )
+
+                        if not to_create and not to_delete:
+                            print(f"  No changes needed for '{name}'")
+                        else:
+                            batch_create_records(client, to_create, name)
+                            batch_delete_records(client, to_delete)
+                            changed_collections.add(col)
+
+                        successes.append(name)
+                    except Exception as e:
+                        print(f"  ERROR: {e}", file=sys.stderr)
+                        failures.append((name, str(e)))
+
                 else:
                     is_transform = list_type != "abp"
                     record_data = {"Name": name}

@@ -5,11 +5,25 @@ remote_settings:
   auto_approve: true
 
 lists:
-  - name: "easylist"
-    type: abp_records
-    url: "https://easylist.to/easylist/easylist.txt"
-    collection: "content-classifier-list-easylist"
+  #- name: "easylist"
+  #  type: abp_records
+  #  url: "https://easylist.to/easylist/easylist.txt"
+  #  collection: "content-classifier-list-easylist"
   # - name: "easyprivacy"
   #   type: abp_records
   #   url: "https://easylist.to/easylist/easyprivacy.txt"
   #   max_rules: 1
+  - name: "disconnect-tracking-protection"
+    type: disconnect_records
+    collection: "content-classifier-list-disconnect-tp"
+    sources:
+      - key: "blocklist"
+        url: "https://raw.githubusercontent.com/mozilla-services/shavar-prod-lists/refs/heads/master/disconnect-blacklist.json"
+      - key: "entitylist"
+        url: "https://raw.githubusercontent.com/mozilla-services/shavar-prod-lists/refs/heads/master/disconnect-entitylist.json"
+    transform: "disconnect_to_abp"
+    transform_options:
+      categories:
+        - Advertising
+        - Analytics
+        - Social
