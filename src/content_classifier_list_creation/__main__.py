@@ -1,29 +1,21 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
 import os
 import sys
 import tempfile
 
 import yaml
 
-from .abp_parser import parse_rules
 from .config import load_config
-from .diff import diff_rules
+from .processors import get_processor
 from .rs import (
     approve_changes,
-    batch_create_records,
-    batch_delete_records,
     create_client,
     delete_all_records,
-    find_record_by_name,
     get_records,
     request_review,
-    upload_attachment,
 )
-from .transform import get_transform
-from .utils import download_file
 
 
 def main():
@@ -85,9 +77,8 @@ def main():
         col = entry.get("collection", default_collection)
         collections.setdefault(col, []).append(entry)
 
-    # Build clients and fetch existing records per collection
+    # Build clients per collection
     clients = {}
-    existing_records = {}
     if not args.dry_run:
         for col in collections:
             clients[col] = create_client(server_url, args.auth_token, bucket, col)
@@ -104,9 +95,14 @@ def main():
                     else:
                         request_review(client)
                 except Exception as e:
-                    print(f"  ERROR during review/approve for '{col}': {e}", file=sys.stderr)
+                    print(
+                        f"  ERROR during review/approve for '{col}': {e}",
+                        file=sys.stderr,
+                    )
         return
 
+    # Fetch existing records per collection
+    existing_records = {}
     if not args.dry_run:
         for col, client in clients.items():
             print(f"Fetching existing records from '{col}' ...")
@@ -126,135 +122,19 @@ def main():
                 name = entry["name"]
                 list_type = entry["type"]
 
-                if list_type == "abp_records":
-                    print(f"\nProcessing: {name} -> {col} (per-rule records)")
+                label, process_fn = get_processor(list_type)
+                print(f"\nProcessing: {name} -> {col} ({label or 'attachment'})")
 
-                    if args.dry_run:
-                        print(f"  [dry-run] Would download: {entry['url']}")
-                        print(f"  [dry-run] Would parse rules and diff against existing records")
-                        print(f"  [dry-run] Would create/delete records as needed for '{name}'")
-                        successes.append(name)
-                        continue
-
-                    try:
-                        filepath = download_file(entry["url"], tmp_dir)
-                        new_rules = parse_rules(filepath)
-                        max_rules = entry.get("max_rules")
-                        if max_rules and len(new_rules) > max_rules:
-                            print(f"  Parsed {len(new_rules)} rules, limiting to {max_rules}")
-                            new_rules = new_rules[:max_rules]
-                        else:
-                            print(f"  Parsed {len(new_rules)} rules from {name}")
-
-                        to_create, to_delete = diff_rules(
-                            new_rules, col_records, name
-                        )
-                        print(
-                            f"  Diff: {len(to_create)} to create, {len(to_delete)} to delete"
-                        )
-
-                        if not to_create and not to_delete:
-                            print(f"  No changes needed for '{name}'")
-                        else:
-                            batch_create_records(client, to_create, name)
-                            batch_delete_records(client, to_delete)
-                            changed_collections.add(col)
-
-                        successes.append(name)
-                    except Exception as e:
-                        print(f"  ERROR: {e}", file=sys.stderr)
-                        failures.append((name, str(e)))
-
-                elif list_type == "disconnect_records":
-                    print(f"\nProcessing: {name} -> {col} (per-rule records from transform)")
-
-                    if args.dry_run:
-                        for src in entry["sources"]:
-                            print(f"  [dry-run] Would download: {src['url']}")
-                        print(f"  [dry-run] Would run transform: {entry['transform']}")
-                        print(f"  [dry-run] Would parse rules and diff against existing records")
-                        print(f"  [dry-run] Would create/delete records as needed for '{name}'")
-                        successes.append(name)
-                        continue
-
-                    try:
-                        source_paths = {}
-                        for src in entry["sources"]:
-                            path = download_file(src["url"], tmp_dir)
-                            source_paths[src["key"]] = path
-                        transform_fn = get_transform(entry["transform"])
-                        options = entry.get("transform_options", {})
-                        filepath = transform_fn(source_paths, tmp_dir, options)
-
-                        new_rules = parse_rules(filepath)
-                        max_rules = entry.get("max_rules")
-                        if max_rules and len(new_rules) > max_rules:
-                            print(f"  Parsed {len(new_rules)} rules, limiting to {max_rules}")
-                            new_rules = new_rules[:max_rules]
-                        else:
-                            print(f"  Parsed {len(new_rules)} rules from {name}")
-
-                        to_create, to_delete = diff_rules(
-                            new_rules, col_records, name
-                        )
-                        print(
-                            f"  Diff: {len(to_create)} to create, {len(to_delete)} to delete"
-                        )
-
-                        if not to_create and not to_delete:
-                            print(f"  No changes needed for '{name}'")
-                        else:
-                            batch_create_records(client, to_create, name)
-                            batch_delete_records(client, to_delete)
-                            changed_collections.add(col)
-
-                        successes.append(name)
-                    except Exception as e:
-                        print(f"  ERROR: {e}", file=sys.stderr)
-                        failures.append((name, str(e)))
-
-                else:
-                    is_transform = list_type != "abp"
-                    record_data = {"Name": name}
-
-                    existing = find_record_by_name(col_records, name)
-                    action = "update" if existing else "create"
-
-                    print(f"\nProcessing: {name} -> {col} ({action})")
-
-                    if args.dry_run:
-                        if is_transform:
-                            for src in entry["sources"]:
-                                print(f"  [dry-run] Would download: {src['url']}")
-                            print(f"  [dry-run] Would run transform: {entry['transform']}")
-                        else:
-                            print(f"  [dry-run] Would download: {entry['url']}")
-                        print(
-                            f"  [dry-run] Would {action} record with data: {json.dumps(record_data)}"
-                        )
-                        successes.append(name)
-                        continue
-
-                    try:
-                        record_id = existing["id"] if existing else None
-
-                        if is_transform:
-                            source_paths = {}
-                            for src in entry["sources"]:
-                                path = download_file(src["url"], tmp_dir)
-                                source_paths[src["key"]] = path
-                            transform_fn = get_transform(entry["transform"])
-                            options = entry.get("transform_options", {})
-                            filepath = transform_fn(source_paths, tmp_dir, options)
-                        else:
-                            filepath = download_file(entry["url"], tmp_dir)
-
-                        upload_attachment(client, filepath, record_data, record_id)
+                try:
+                    changed = process_fn(
+                        entry, client, col_records, tmp_dir, args.dry_run
+                    )
+                    if changed:
                         changed_collections.add(col)
-                        successes.append(name)
-                    except Exception as e:
-                        print(f"  ERROR: {e}", file=sys.stderr)
-                        failures.append((name, str(e)))
+                    successes.append(name)
+                except Exception as e:
+                    print(f"  ERROR: {e}", file=sys.stderr)
+                    failures.append((name, str(e)))
 
     # Request review or approve changes per collection
     if not args.dry_run:
@@ -265,9 +145,18 @@ def main():
                 else:
                     request_review(clients[col])
             except Exception as e:
-                print(f"  ERROR during review/approve for '{col}': {e}", file=sys.stderr)
+                print(
+                    f"  ERROR during review/approve for '{col}': {e}", file=sys.stderr
+                )
                 failures.append((f"review/approve:{col}", str(e)))
 
+    print_summary(successes, failures)
+
+    if failures:
+        sys.exit(1)
+
+
+def print_summary(successes, failures):
     print("\n--- Summary ---")
     print(f"Succeeded: {len(successes)}")
     if successes:
@@ -277,9 +166,6 @@ def main():
     if failures:
         for name, err in failures:
             print(f"  - {name}: {err}")
-
-    if failures:
-        sys.exit(1)
 
 
 if __name__ == "__main__":
